@@ -183,18 +183,33 @@ def normalize_weights(weights: dict) -> dict:
     return {k: v / total for k, v in weights.items()}
 
 
-def score_timeframe(metrics: pd.DataFrame, weights: dict, clip: float = 3.0):
+def score_timeframe(metrics: pd.DataFrame, weights: dict, clip: float = 3.0) -> dict:
     """指標DataFrame（index=ticker）を z-score 化して合成スコアを返す。
 
-    戻り値: (scores: Series, zs: DataFrame, contributions: DataFrame)
+    戻り値の dict:
+      score            合成スコア（クリップ後のz-scoreを重み付き合計したもの。表示用）
+      score_unclipped  クリップしないz-scoreで同じ合成をしたもの（同点の並べ替え用）
+      z                クリップ後のz-score（index=ticker, columns=指標）
+      contrib          各指標の寄与（z × 正規化した重み）
+      weights          正規化後の重み
+
     欠損した指標は z=0（=ユニバース平均）として扱い、その銘柄を落とさない。
+    クリップは外れ値が合成を支配するのを防ぐが、上限に張り付いた銘柄同士は
+    同点になるため、順位付けにはクリップなしのスコアを補助的に使う。
     """
     missing = [k for k in weights if k not in metrics.columns]
     if missing:
         raise KeyError(f"指標が見つかりません: {missing}")
 
     w = normalize_weights(weights)
+    ws = pd.Series(w)
     zs = pd.DataFrame({k: zscore(metrics[k], clip) for k in weights}, index=metrics.index)
-    contributions = zs.fillna(0.0).mul(pd.Series(w), axis=1)
-    scores = contributions.sum(axis=1)
-    return scores, zs, contributions
+    zs_raw = pd.DataFrame({k: zscore(metrics[k], np.inf) for k in weights}, index=metrics.index)
+    contributions = zs.fillna(0.0).mul(ws, axis=1)
+    return {
+        "score": contributions.sum(axis=1),
+        "score_unclipped": zs_raw.fillna(0.0).mul(ws, axis=1).sum(axis=1),
+        "z": zs,
+        "contrib": contributions,
+        "weights": w,
+    }

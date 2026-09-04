@@ -39,6 +39,10 @@ SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 # TOPIX500 に相当する規模区分
 TOPIX500_TIERS = ("TOPIX Core30", "TOPIX Large70", "TOPIX Mid400")
 
+# S&P500 は同一企業の複数株式クラスを含み503ティッカーある。
+# 同じ会社がセクター上位を2枠占めてしまうため、流動性の低い方のクラスを落として500社にする。
+US_SECONDARY_SHARE_CLASSES = ("GOOG", "FOX", "NWS")
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) sector-trend-dashboard/0.1 "
     "(+https://github.com/fkol-apps)"
@@ -129,9 +133,13 @@ def build_us(sector_map: dict) -> pd.DataFrame:
 
     rows = []
     unknown = set()
+    dropped = []
     for _, r in df.iterrows():
         # BRK.B / BF.B は yfinance では BRK-B / BF-B
         ticker = str(r["Symbol"]).strip().replace(".", "-")
+        if ticker in US_SECONDARY_SHARE_CLASSES:
+            dropped.append(ticker)
+            continue
         sector = str(r["GICS Sector"]).strip()
         if sector not in valid_sectors:
             unknown.add(sector)
@@ -141,6 +149,8 @@ def build_us(sector_map: dict) -> pd.DataFrame:
 
     if unknown:
         print(f"[us] 警告: GICS 11セクターに無い分類をスキップしました: {sorted(unknown)}")
+    if dropped:
+        print(f"[us] 同一企業の2本目の株式クラスを除外しました: {dropped}")
 
     out = pd.DataFrame(rows).drop_duplicates("ticker").sort_values("ticker").reset_index(drop=True)
     return out

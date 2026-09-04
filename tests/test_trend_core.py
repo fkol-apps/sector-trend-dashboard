@@ -223,19 +223,19 @@ def test_score_ranks_stronger_stock_higher():
         {"ret_20d": [0.20, 0.05, -0.10], "above_sma20": [1.0, 1.0, 0.0]},
         index=["STRONG", "MID", "WEAK"],
     )
-    scores, zs, contrib = score_timeframe(metrics, {"ret_20d": 0.7, "above_sma20": 0.3})
+    res = score_timeframe(metrics, {"ret_20d": 0.7, "above_sma20": 0.3})
 
-    assert list(scores.sort_values(ascending=False).index) == ["STRONG", "MID", "WEAK"]
+    assert list(res["score"].sort_values(ascending=False).index) == ["STRONG", "MID", "WEAK"]
     # 合成スコアは各指標の寄与の合計
-    assert scores["STRONG"] == pytest.approx(contrib.loc["STRONG"].sum())
+    assert res["score"]["STRONG"] == pytest.approx(res["contrib"].loc["STRONG"].sum())
     # z-score 化しているので合成前の平均は 0
-    assert zs["ret_20d"].mean() == pytest.approx(0.0)
+    assert res["z"]["ret_20d"].mean() == pytest.approx(0.0)
 
 
 def test_score_is_invariant_to_weight_magnitude():
     metrics = pd.DataFrame({"a": [1.0, 2.0, 3.0], "b": [3.0, 2.0, 1.0]}, index=["x", "y", "z"])
-    s1, _, _ = score_timeframe(metrics, {"a": 1.0, "b": 1.0})
-    s2, _, _ = score_timeframe(metrics, {"a": 10.0, "b": 10.0})
+    s1 = score_timeframe(metrics, {"a": 1.0, "b": 1.0})["score"]
+    s2 = score_timeframe(metrics, {"a": 10.0, "b": 10.0})["score"]
     pd.testing.assert_series_equal(s1, s2)
 
 
@@ -246,17 +246,29 @@ def test_raw_scale_does_not_leak_into_score():
     """
     base = pd.DataFrame({"a": [0.1, 0.2, 0.3], "b": [1.0, 3.0, 2.0]}, index=["x", "y", "z"])
     scaled = base.assign(b=base["b"] * 1000.0)
-    s1, _, _ = score_timeframe(base, {"a": 0.5, "b": 0.5})
-    s2, _, _ = score_timeframe(scaled, {"a": 0.5, "b": 0.5})
+    s1 = score_timeframe(base, {"a": 0.5, "b": 0.5})["score"]
+    s2 = score_timeframe(scaled, {"a": 0.5, "b": 0.5})["score"]
     pd.testing.assert_series_equal(s1, s2)
 
 
 def test_score_treats_missing_metric_as_average():
     metrics = pd.DataFrame({"a": [1.0, 2.0, np.nan], "b": [1.0, 1.0, 1.0]}, index=["x", "y", "z"])
-    scores, _, _ = score_timeframe(metrics, {"a": 1.0, "b": 1.0})
+    scores = score_timeframe(metrics, {"a": 1.0, "b": 1.0})["score"]
 
     assert np.isfinite(scores["z"])          # 欠損があっても銘柄を落とさない
     assert scores["z"] == pytest.approx(0.0)  # a は平均扱い、b は分散0で0
+
+
+def test_clipped_scores_tie_but_unclipped_breaks_it():
+    """クリップ上限に張り付いた銘柄同士は同点になり、クリップなしスコアで順序が付く。"""
+    # 2銘柄だけ極端に強い（どちらも z > 3 になる）値を持たせる
+    values = [0.0] * 100 + [1000.0, 2000.0]
+    metrics = pd.DataFrame({"a": values}, index=[f"T{i}" for i in range(100)] + ["BIG", "HUGE"])
+    res = score_timeframe(metrics, {"a": 1.0}, clip=3.0)
+
+    assert res["score"]["HUGE"] == pytest.approx(3.0)                      # 上限に張り付く
+    assert res["score"]["BIG"] == pytest.approx(res["score"]["HUGE"])      # 表示スコアは同点
+    assert res["score_unclipped"]["HUGE"] > res["score_unclipped"]["BIG"]  # それでも順序は付く
 
 
 def test_score_raises_on_unknown_metric():

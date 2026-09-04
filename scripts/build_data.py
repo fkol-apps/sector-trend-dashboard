@@ -29,7 +29,6 @@ from scripts.trend_core import (  # noqa: E402
     TIMEFRAME_LABELS,
     TIMEFRAME_RETURN,
     compute_metrics,
-    normalize_weights,
     score_timeframe,
     sma,
 )
@@ -182,16 +181,7 @@ def apply_filters(metrics: pd.DataFrame, cfg: dict, market: str, log=print) -> p
 def score_all(metrics: pd.DataFrame, cfg: dict) -> dict:
     """時間軸ごとに z-score 合成し、スコア・z・寄与を返す。"""
     clip = cfg["scoring"]["zscore_clip"]
-    result = {}
-    for tf, weights in cfg["weights"].items():
-        scores, zs, contrib = score_timeframe(metrics, weights, clip)
-        result[tf] = {
-            "score": scores,
-            "z": zs,
-            "contrib": contrib,
-            "weights": normalize_weights(weights),
-        }
-    return result
+    return {tf: score_timeframe(metrics, weights, clip) for tf, weights in cfg["weights"].items()}
 
 
 def pick_top(metrics: pd.DataFrame, universe: pd.DataFrame, scored: dict, cfg: dict) -> dict:
@@ -205,7 +195,12 @@ def pick_top(metrics: pd.DataFrame, universe: pd.DataFrame, scored: dict, cfg: d
         members = [t for t in metrics.index if sector_of.get(t) == sector]
         by_tf = {}
         for tf, res in scored.items():
-            ranked = res["score"].loc[members].sort_values(ascending=False)
+            # 同点（z-scoreのクリップ上限に張り付いた銘柄同士）はクリップなしスコアで並べ替える
+            ranked = (
+                pd.DataFrame({"s": res["score"], "tb": res["score_unclipped"]})
+                .loc[members]
+                .sort_values(["s", "tb"], ascending=False)
+            )
             by_tf[tf] = list(ranked.head(top_n).index)
         picks[sector] = {"members": members, "timeframes": by_tf}
     return picks
@@ -298,7 +293,11 @@ def build_payload(
 ) -> dict:
     ranks = {}
     for tf, res in scored.items():
-        ranks[tf] = {t: int(r) for t, r in res["score"].rank(ascending=False, method="min").items()}
+        # 同点はクリップなしスコアで解いてから順位を付ける
+        order = pd.DataFrame({"s": res["score"], "tb": res["score_unclipped"]}).sort_values(
+            ["s", "tb"], ascending=False
+        )
+        ranks[tf] = {t: i for i, t in enumerate(order.index, start=1)}
 
     uni = universe.set_index("ticker").to_dict(orient="index")
     sector_meta = {s["key"]: s for s in sector_map["gics_sectors"]}
