@@ -1,0 +1,9 @@
+pandas>=2.2
+numpy>=1.26
+yfinance>=0.2.50
+requests>=2.31
+lxml>=5.0
+xlrd>=2.0
+openpyxl>=3.1
+PyYAML>=6.0
+pytest>=8.0

@@ -1,0 +1,77 @@
+# セクター別トレンド銘柄ダッシュボード 設定ファイル
+# 重み・しきい値はここだけ触れば調整できる。スクリプト側は数値をハードコードしない。
+
+data:
+  history_days: 400          # 指標算出に使う日足の営業日数（200日SMAの傾きを見るため多めに確保）
+  download_period: "3y"      # yfinance に渡す取得期間（欠損・休場を考慮して余裕を持たせる）
+  batch_size: 40             # 1回のダウンロードで投げるティッカー数
+  sleep_between_batches: 2.0 # バッチ間の待機秒数（レート制限対策）
+  max_retries: 3             # バッチ単位のリトライ回数
+  retry_backoff: 5.0         # リトライ時の待機秒数（回数に比例して増やす）
+
+# 事前フィルタ（これを満たさない銘柄はスコア算出前に除外する）
+filters:
+  min_trading_days: 250      # 上場から日が浅い銘柄を除外
+  jp:
+    min_avg_turnover: 100000000   # 60日平均売買代金 1億円未満は除外（円）
+    min_price: 100                # 株価100円未満は除外（円）
+  us:
+    min_avg_turnover: 5000000     # 60日平均売買代金 500万ドル未満は除外（ドル）
+    min_price: 5                  # 株価5ドル未満は除外（ドル）
+
+scoring:
+  zscore_clip: 3.0           # z-score の外れ値をこの値でクリップ
+  rsi:
+    low: 50                  # このRSI未満は加点しない
+    high: 70                 # このRSIを超えると過熱として減点
+    overheat_span: 15        # high から何ポイントで減点が最大になるか
+  top_n: 3                   # セクター×時間軸ごとに抽出する銘柄数
+
+# 各時間軸のスコア合成の重み。合計が1でなくても内部で正規化される。
+weights:
+  long:                      # 長期（6〜12ヶ月）
+    mom_12_1: 0.50           # 直近1ヶ月を除く12ヶ月リターン
+    above_sma200: 0.20       # 終値 > 200日SMA
+    sma200_slope: 0.30       # 200日SMAの直近60日での変化率
+  mid:                       # 中期（1〜3ヶ月）
+    ret_3m: 0.35             # 3ヶ月リターン
+    golden_cross: 0.15       # 50日SMA > 200日SMA
+    above_sma50: 0.15        # 終値 > 50日SMA
+    sma50_slope: 0.35        # 50日SMAの直近20日での変化率
+  short:                     # 短期（1〜4週）
+    ret_20d: 0.35            # 20日リターン
+    above_sma20: 0.15        # 終値 > 20日SMA
+    rsi_zone: 0.30           # RSI(14) の位置（50〜70が最良、70超は減点）
+    volume_ratio: 0.20       # 直近5日平均出来高 ÷ 直近60日平均出来高
+
+# 指標の計算窓（営業日）
+windows:
+  sma_short: 20
+  sma_mid: 50
+  sma_long: 200
+  sma_long_slope: 60
+  sma_mid_slope: 20
+  ret_short: 20
+  ret_mid: 63             # 約3ヶ月
+  mom_lookback: 252       # 約12ヶ月
+  mom_skip: 21            # 直近1ヶ月を除外
+  rsi_period: 14
+  volume_recent: 5
+  volume_base: 60
+  turnover_window: 60
+
+markets:
+  jp:
+    label: "日本株"
+    currency: "JPY"
+    universe: "data/universe_jp.csv"
+    output: "docs/data/jp.json"
+  us:
+    label: "米国株"
+    currency: "USD"
+    universe: "data/universe_us.csv"
+    output: "docs/data/us.json"
+
+output:
+  sparkline_days: 60        # タイルのスパークラインに載せる日数
+  chart_days: 252           # モーダルのチャートに載せる日数（約1年）
