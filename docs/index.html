@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>セクター別トレンド銘柄ダッシュボード</title>
+<meta name="description" content="日本株・米国株のセクター別トレンド銘柄を、長期・中期・短期の3つの時間軸で俯瞰する一次スクリーニング用ダッシュボード。">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <div class="titles">
+      <h1>セクター別トレンド銘柄</h1>
+      <p class="subtitle" id="subtitle">読み込み中…</p>
+    </div>
+    <div class="meta" id="meta"></div>
+  </div>
+</header>
+
+<main class="board" id="board"></main>
+
+<div class="status" id="status" hidden></div>
+
+<footer class="disclaimer">
+  本ツールは過去の値動きに基づく機械的なスクリーニング結果であり、投資助言ではありません。投資判断はご自身の責任で行ってください。
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

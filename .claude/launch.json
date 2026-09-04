@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sector-trend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8940", "--directory", "docs"],
+      "port": 8940
+    }
+  ]
+}
