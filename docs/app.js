@@ -11,11 +11,16 @@
   const RETURN_LABEL = { long: "12ヶ月", mid: "3ヶ月", short: "20日" };
   // スコアがこの絶対値で色の濃さが最大になる（z-score合成なので概ね±2.5に収まる）
   const TINT_SCALE = 2.0;
+  // マップ表示で色の濃さが最大になるリターン（時間軸ごとの実勢に合わせた絶対値）
+  const RETURN_FULL = { long: 1.0, mid: 0.4, short: 0.2 };
+  const VIEWS = ["map", "list"];
+  const VIEW_LABEL = { map: "マップ", list: "リスト" };
 
   const SVGNS = "http://www.w3.org/2000/svg";
 
   const state = {
     market: "jp",
+    view: "map",
     timeframes: new Set(TIMEFRAME_ORDER),
     data: null,
   };
@@ -29,6 +34,8 @@
     meta: document.getElementById("meta"),
     subtitle: document.getElementById("subtitle"),
     marketToggle: document.getElementById("market-toggle"),
+    viewToggle: document.getElementById("view-toggle"),
+    legend: document.getElementById("color-legend"),
     chips: document.getElementById("timeframe-chips"),
     dialog: document.getElementById("detail"),
     dialogBody: document.getElementById("detail-body"),
@@ -102,6 +109,16 @@
       rgb: s >= 0 ? "var(--pos)" : "var(--neg)",
       tintAlpha: (0.04 + 0.18 * t).toFixed(3),
       barAlpha: (0.25 + 0.75 * t).toFixed(3),
+    };
+  }
+
+  /** リターンの大きさを色に変換する。上昇＝青、下落＝オレンジ、濃さ＝騰落率の大きさ。 */
+  function returnTint(ret, timeframe) {
+    const r = ret ?? 0;
+    const t = Math.min(Math.abs(r) / RETURN_FULL[timeframe], 1);
+    return {
+      rgb: r >= 0 ? "var(--pos)" : "var(--neg)",
+      alpha: (0.07 + 0.35 * t).toFixed(3),
     };
   }
 
@@ -189,10 +206,102 @@
   }
 
   function render() {
-    const data = state.data;
     const shown = activeTimeframes();
-    renderBoardHead(shown);
     el.board.textContent = "";
+    el.board.classList.toggle("is-map", state.view === "map");
+    el.boardHead.hidden = state.view !== "list";
+    el.legend.hidden = state.view !== "map";
+    if (state.view === "map") renderMap(shown);
+    else renderList(shown);
+  }
+
+  /** 1セクター = 1枚の正方形カード。中身は 時間軸(列) × 順位(行) のヒートマップ。 */
+  function renderMap(shown) {
+    const data = state.data;
+
+    for (const sector of data.sectors) {
+      const card = document.createElement("section");
+      card.className = "sector-card";
+      card.dataset.sector = sector.key;
+
+      const head = document.createElement("div");
+      head.className = "card-head";
+      const name = document.createElement("span");
+      name.className = "card-name";
+      name.textContent = sector.ja;
+      name.title = sector.ja;
+      const count = document.createElement("span");
+      count.className = "card-count";
+      count.textContent = `${sector.count}銘柄`;
+      head.append(name, count);
+
+      const grid = document.createElement("div");
+      grid.className = "card-grid";
+
+      for (const tf of shown) {
+        const label = document.createElement("div");
+        label.className = "cell-label";
+        label.textContent = data.timeframe_labels?.[tf] ?? TIMEFRAME_LABEL[tf];
+        grid.appendChild(label);
+
+        const tickers = sector.timeframes?.[tf] ?? [];
+        for (let i = 0; i < data.top_n; i++) {
+          const ticker = tickers[i];
+          const stock = ticker ? data.stocks[ticker] : null;
+          if (!stock) {
+            const empty = document.createElement("div");
+            empty.className = "cell is-empty";
+            empty.textContent = "—";
+            empty.title = `該当銘柄なし（対象${sector.count}銘柄）`;
+            grid.appendChild(empty);
+            continue;
+          }
+          grid.appendChild(buildCell(stock, tf));
+        }
+      }
+
+      card.append(head, grid);
+      el.board.appendChild(card);
+    }
+  }
+
+  function buildCell(stock, timeframe) {
+    const sc = stock.scores[timeframe] || {};
+    const tint = returnTint(sc.return, timeframe);
+
+    const cell = document.createElement("button");
+    cell.type = "button";
+    cell.className = "cell";
+    cell.dataset.ticker = stock.ticker;
+    cell.dataset.timeframe = timeframe;
+    cell.style.setProperty("--c", tint.rgb);
+    cell.style.setProperty("--a", tint.alpha);
+
+    const name = document.createElement("span");
+    name.className = "cell-name";
+    name.textContent = stock.name;
+
+    const ret = document.createElement("span");
+    ret.className = "cell-ret";
+    ret.textContent = formatPct(sc.return, 0);
+
+    cell.append(name, ret);
+    cell.title =
+      `${stock.name}（${stock.ticker}）
+` +
+      `${RETURN_LABEL[timeframe]}リターン ${formatPct(sc.return)} ／ スコア ${formatSigned(sc.score)}` +
+      `（市場全体 ${sc.rank ?? "—"}位）`;
+    cell.setAttribute(
+      "aria-label",
+      `${stock.name} ${RETURN_LABEL[timeframe]}リターン${formatPct(sc.return)} 詳細を開く`
+    );
+    cell.addEventListener("click", () => openDetail(stock.ticker, timeframe));
+    return cell;
+  }
+
+  function renderList(shown) {
+    const data = state.data;
+    renderBoardHead(shown);
 
     for (const sector of data.sectors) {
       const row = document.createElement("section");
@@ -582,6 +691,18 @@
       el.marketToggle.appendChild(btn);
     }
 
+    el.viewToggle.textContent = "";
+    for (const v of VIEWS) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "segment";
+      btn.dataset.view = v;
+      btn.textContent = VIEW_LABEL[v];
+      btn.setAttribute("aria-pressed", String(state.view === v));
+      btn.addEventListener("click", () => switchView(v));
+      el.viewToggle.appendChild(btn);
+    }
+
     el.chips.textContent = "";
     for (const tf of TIMEFRAME_ORDER) {
       const chip = document.createElement("button");
@@ -610,6 +731,9 @@
     for (const btn of el.marketToggle.querySelectorAll(".segment")) {
       btn.setAttribute("aria-pressed", String(btn.dataset.market === state.market));
     }
+    for (const btn of el.viewToggle.querySelectorAll(".segment")) {
+      btn.setAttribute("aria-pressed", String(btn.dataset.view === state.view));
+    }
     for (const chip of el.chips.querySelectorAll(".chip[data-timeframe]")) {
       chip.setAttribute("aria-pressed", String(state.timeframes.has(chip.dataset.timeframe)));
     }
@@ -629,6 +753,14 @@
     render();
   }
 
+  function switchView(view) {
+    if (view === state.view) return;
+    state.view = view;
+    syncControls();
+    syncUrl();
+    render();
+  }
+
   async function switchMarket(market) {
     if (market === state.market) return;
     state.market = market;
@@ -641,6 +773,7 @@
   function syncUrl() {
     const params = new URLSearchParams();
     params.set("market", state.market);
+    params.set("view", state.view);
     if (state.timeframes.size !== TIMEFRAME_ORDER.length) {
       params.set("tf", activeTimeframes().join(","));
     }
@@ -651,6 +784,9 @@
     const params = new URLSearchParams(location.search);
     const market = params.get("market");
     if (MARKETS.includes(market)) state.market = market;
+
+    const view = params.get("view");
+    if (VIEWS.includes(view)) state.view = view;
 
     const tf = (params.get("tf") || "")
       .split(",")
