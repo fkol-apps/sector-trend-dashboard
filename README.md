@@ -234,6 +234,34 @@ python -m http.server 8940 --directory docs
   寄与＝ z × 重み で、その合計が合成スコアです。どの指標がスコアを押し上げ（下げ）ているかが分かります。
 - **Yahoo Finance** の該当ページへの外部リンク（日本株は finance.yahoo.co.jp、米国株は finance.yahoo.com）。
 
+## アプリアイコン / ホーム画面への追加
+
+スマホのホーム画面に追加すると **「Trends」** という名前とアイコンで並びます
+（iOS: 共有 → ホーム画面に追加 ／ Android Chrome: メニュー → ホーム画面に追加）。
+`display: standalone` なのでアドレスバーのないアプリのように起動します。
+
+アイコンは盤面と同じ **3×3のヒートマップ**（左上ほど明るい青＝強い、右下の1枚がオレンジ＝弱い）。
+`tools/make_icons.py` が全サイズを生成します。
+
+```bash
+.venv/Scripts/python.exe tools/make_icons.py
+```
+
+| 生成物 | 用途 |
+| --- | --- |
+| `docs/icons/apple-touch-icon.png` (180) | iOS のホーム画面 |
+| `docs/icons/icon-192.png` / `icon-512.png` | manifest（Android・PWA） |
+| `docs/icons/icon-maskable-512.png` | Android の maskable（安全余白を確保した版） |
+| `docs/icons/icon.svg` | デスクトップのタブ（拡大しても劣化しない） |
+| `docs/favicon.ico` | 従来型のファビコン（16〜64px を内包） |
+
+デザインを変えるときは `tools/make_icons.py` の定数（余白・隙間・角丸・配色）を触れば
+全サイズが作り直せます。名前は `docs/manifest.webmanifest` と
+`index.html` の `apple-mobile-web-app-title` の2箇所です。
+
+> iOS のステータスバー設定は `default` にしています。`black-translucent` にすると
+> 本文がステータスバーの裏に回り込み、ヘッダーが隠れるためです。
+
 ## 自動更新（GitHub Actions）
 
 `.github/workflows/update-data.yml` が **平日の日本時間 朝7:00** に動きます

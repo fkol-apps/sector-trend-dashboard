@@ -1,0 +1,18 @@
+{
+  "name": "Trends — セクター別トレンド銘柄",
+  "short_name": "Trends",
+  "description": "日本株・米国株のセクター別トレンド銘柄を長期・中期・短期の3軸で俯瞰する一次スクリーニング用ダッシュボード。",
+  "lang": "ja",
+  "start_url": "./?market=jp&view=map",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1720",
+  "theme_color": "#132234",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
