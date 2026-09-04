@@ -302,21 +302,20 @@
     cell.style.setProperty("--c", tint.rgb);
     cell.style.setProperty("--a", tint.alpha);
 
+    // ティッカー / 銘柄名 / リターンを縦に並べる（横並びだと幅が足りず省略されるため）
+    const ticker = document.createElement("span");
+    ticker.className = "cell-ticker";
+    ticker.textContent = stock.ticker;
+
     const name = document.createElement("span");
     name.className = "cell-name";
     name.textContent = stock.name;
 
-    const foot = document.createElement("span");
-    foot.className = "cell-foot";
-    const ticker = document.createElement("span");
-    ticker.className = "cell-ticker";
-    ticker.textContent = stock.ticker;
     const ret = document.createElement("span");
     ret.className = "cell-ret";
     ret.textContent = formatPct(sc.return, 0);
-    foot.append(ticker, ret);
 
-    cell.append(name, foot);
+    cell.append(ticker, name, ret);
     cell.title =
       `${stock.name}（${stock.ticker}）
 ` +
