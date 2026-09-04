@@ -22,9 +22,11 @@ filters:
 scoring:
   zscore_clip: 3.0           # z-score の外れ値をこの値でクリップ
   rsi:
-    low: 50                  # このRSI未満は加点しない
+    low_anchor: 30           # このRSIで加点0。ここから low に向かって線形に上がる
+    low: 50                  # low〜high は満点(1.0)
     high: 70                 # このRSIを超えると過熱として減点
-    overheat_span: 15        # high から何ポイントで減点が最大になるか
+    overheat_span: 15        # high から何ポイント超過で減点が下限に達するか
+    penalty_floor: -1.0      # 過熱時の下限スコア
   top_n: 3                   # セクター×時間軸ごとに抽出する銘柄数
 
 # 各時間軸のスコア合成の重み。合計が1でなくても内部で正規化される。
