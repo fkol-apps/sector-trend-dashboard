@@ -210,6 +210,7 @@ body {
 
 .sector-name { font-size: 12px; font-weight: 700; line-height: 1.25; }
 .sector-count { font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+.sector-rail .strength { align-self: flex-start; margin-top: 3px; }
 
 .tf-column { padding: 5px 6px; border-right: 1px solid var(--border); min-width: 0; }
 .tf-column:last-child { border-right: none; }
@@ -349,7 +350,19 @@ body {
 }
 
 .card-name { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card-count { font-size: 9.5px; color: var(--text-faint); white-space: nowrap; }
+.card-count { font-size: 9.5px; color: var(--text-faint); white-space: nowrap; margin-left: auto; }
+
+/* セクターの強さ（掲載銘柄の平均スコア）。この値の降順にセクターを並べている。 */
+.strength {
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--tint-rgb));
+  background: rgba(var(--tint-rgb), 0.15);
+  border-radius: 999px;
+  padding: 0 5px;
+  white-space: nowrap;
+}
 
 .card-grid {
   flex: 1;
@@ -400,7 +413,24 @@ body {
   overflow: hidden;
 }
 
-.cell-ret { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cell-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 5px;
+  margin-top: 1px;
+}
+
+.cell-ticker {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-ret { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .cell.is-empty {
   background: transparent;

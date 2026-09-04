@@ -9,10 +9,9 @@
   const TIMEFRAME_LABEL = { long: "長期", mid: "中期", short: "短期" };
   const TIMEFRAME_NOTE = { long: "6〜12ヶ月", mid: "1〜3ヶ月", short: "1〜4週" };
   const RETURN_LABEL = { long: "12ヶ月", mid: "3ヶ月", short: "20日" };
-  // スコアがこの絶対値で色の濃さが最大になる（z-score合成なので概ね±2.5に収まる）
-  const TINT_SCALE = 2.0;
-  // マップ表示で色の濃さが最大になるリターン（時間軸ごとの実勢に合わせた絶対値）
-  const RETURN_FULL = { long: 1.0, mid: 0.4, short: 0.2 };
+  // スコアがこの絶対値で色の濃さが最大になる。掲載銘柄のスコアは概ね 0〜2.5 に分布するので、
+  // 1.5 を上限にすると中位の銘柄にもはっきり色がつく。
+  const TINT_SCALE = 1.5;
   const VIEWS = ["map", "list"];
   const VIEW_LABEL = { map: "マップ", list: "リスト" };
 
@@ -112,13 +111,13 @@
     };
   }
 
-  /** リターンの大きさを色に変換する。上昇＝青、下落＝オレンジ、濃さ＝騰落率の大きさ。 */
-  function returnTint(ret, timeframe) {
-    const r = ret ?? 0;
-    const t = Math.min(Math.abs(r) / RETURN_FULL[timeframe], 1);
+  /** マップのセル色。スコア＝市場全体での相対強度を、青(強い)〜オレンジ(弱い)の濃淡で表す。 */
+  function cellTint(score) {
+    const s = score ?? 0;
+    const t = Math.min(Math.abs(s) / TINT_SCALE, 1);
     return {
-      rgb: r >= 0 ? "var(--pos)" : "var(--neg)",
-      alpha: (0.07 + 0.35 * t).toFixed(3),
+      rgb: s >= 0 ? "var(--pos)" : "var(--neg)",
+      alpha: (0.06 + 0.40 * t).toFixed(3),
     };
   }
 
@@ -205,6 +204,32 @@
     }
   }
 
+  /** 表示中の時間軸で、掲載銘柄の平均スコアをセクターの強さとして並べ替える。 */
+  function sortedSectors(shown) {
+    const data = state.data;
+    return data.sectors
+      .map((sector) => {
+        const scores = shown.flatMap((tf) =>
+          (sector.timeframes?.[tf] ?? []).map((t) => data.stocks[t]?.scores?.[tf]?.score ?? 0)
+        );
+        const strength = scores.length
+          ? scores.reduce((a, b) => a + b, 0) / scores.length
+          : Number.NEGATIVE_INFINITY;
+        return { sector, strength };
+      })
+      .sort((a, b) => b.strength - a.strength);
+  }
+
+  function strengthPill(strength) {
+    const tint = cellTint(strength);
+    const pill = document.createElement("span");
+    pill.className = "strength";
+    pill.style.setProperty("--tint-rgb", tint.rgb);
+    pill.textContent = formatSigned(strength);
+    pill.title = "表示中の掲載銘柄の平均スコア（この順にセクターを並べています）";
+    return pill;
+  }
+
   function render() {
     const shown = activeTimeframes();
     el.board.textContent = "";
@@ -219,7 +244,7 @@
   function renderMap(shown) {
     const data = state.data;
 
-    for (const sector of data.sectors) {
+    for (const { sector, strength } of sortedSectors(shown)) {
       const card = document.createElement("section");
       card.className = "sector-card";
       card.dataset.sector = sector.key;
@@ -233,7 +258,7 @@
       const count = document.createElement("span");
       count.className = "card-count";
       count.textContent = `${sector.count}銘柄`;
-      head.append(name, count);
+      head.append(name, count, strengthPill(strength));
 
       const grid = document.createElement("div");
       grid.className = "card-grid";
@@ -267,7 +292,7 @@
 
   function buildCell(stock, timeframe) {
     const sc = stock.scores[timeframe] || {};
-    const tint = returnTint(sc.return, timeframe);
+    const tint = cellTint(sc.score);
 
     const cell = document.createElement("button");
     cell.type = "button";
@@ -281,11 +306,17 @@
     name.className = "cell-name";
     name.textContent = stock.name;
 
+    const foot = document.createElement("span");
+    foot.className = "cell-foot";
+    const ticker = document.createElement("span");
+    ticker.className = "cell-ticker";
+    ticker.textContent = stock.ticker;
     const ret = document.createElement("span");
     ret.className = "cell-ret";
     ret.textContent = formatPct(sc.return, 0);
+    foot.append(ticker, ret);
 
-    cell.append(name, ret);
+    cell.append(name, foot);
     cell.title =
       `${stock.name}（${stock.ticker}）
 ` +
@@ -303,7 +334,7 @@
     const data = state.data;
     renderBoardHead(shown);
 
-    for (const sector of data.sectors) {
+    for (const { sector, strength } of sortedSectors(shown)) {
       const row = document.createElement("section");
       row.className = "sector";
       row.dataset.sector = sector.key;
@@ -317,7 +348,7 @@
       const countEl = document.createElement("span");
       countEl.className = "sector-count";
       countEl.textContent = `${sector.count}銘柄`;
-      rail.append(nameEl, countEl);
+      rail.append(nameEl, countEl, strengthPill(strength));
       row.appendChild(rail);
 
       for (const tf of shown) {
