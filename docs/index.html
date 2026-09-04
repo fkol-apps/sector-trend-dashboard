@@ -16,6 +16,12 @@
       <h1>セクター別トレンド銘柄</h1>
       <p class="subtitle" id="subtitle">読み込み中…</p>
     </div>
+
+    <div class="controls">
+      <div class="segmented" id="market-toggle" role="group" aria-label="市場の切り替え"></div>
+      <div class="chips" id="timeframe-chips" role="group" aria-label="時間軸フィルタ"></div>
+    </div>
+
     <div class="meta" id="meta"></div>
   </div>
 </header>
@@ -23,6 +29,10 @@
 <main class="board" id="board"></main>
 
 <div class="status" id="status" hidden></div>
+
+<dialog class="detail" id="detail" aria-label="銘柄の詳細">
+  <div class="detail-body" id="detail-body"></div>
+</dialog>
 
 <footer class="disclaimer">
   本ツールは過去の値動きに基づく機械的なスクリーニング結果であり、投資助言ではありません。投資判断はご自身の責任で行ってください。
