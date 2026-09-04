@@ -75,5 +75,12 @@ markets:
     output: "docs/data/us.json"
 
 output:
-  sparkline_days: 60        # タイルのスパークラインに載せる日数
+  sparkline_days: 60        # スパークライン用に載せる日数（現在フロントは未使用だが軽いので残す）
   chart_days: 252           # モーダルのチャートに載せる日数（約1年）
+
+# 毎日の選定結果だけを軽量なスナップショットとして永久保存する。
+# 表示用のフルJSON（約1MB/市場）はコミットを畳んで上書きするため、
+# 「その日どの銘柄がどのスコアで選ばれたか」をここに残して後から検証できるようにする。
+history:
+  enabled: true
+  dir: "data/history"       # data/history/YYYY-MM-DD.json（1日1ファイル、約28KB）

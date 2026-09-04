@@ -1,0 +1,70 @@
+name: データ更新
+
+# 平日の日本時間 朝7:00（= UTC 22:00 の前日）に実行する。
+on:
+  schedule:
+    - cron: "0 22 * * 0-4"   # UTC 日〜木 22:00 = JST 月〜金 07:00
+  workflow_dispatch:
+    inputs:
+      market:
+        description: "更新する市場"
+        required: false
+        default: both
+        type: choice
+        options: [both, jp, us]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 依存関係をインストール
+        run: pip install -r requirements.txt
+
+      - name: スコア算出ロジックのテスト
+        run: python -m pytest tests/ -q
+
+      - name: 株価を取得してJSONを生成
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -u scripts/build_data.py --market ${{ inputs.market || 'both' }}
+
+      - name: コミットして push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- docs/data data/history; then
+            echo "変更なし。コミットしません。"
+            exit 0
+          fi
+
+          git add docs/data data/history
+          MSG="chore(data): $(date -u -d '+9 hours' '+%Y-%m-%d %H:%M') JST 時点のデータ"
+
+          # 表示用のフルJSON（約2MB/日）は履歴を残さず直前のデータコミットに畳む。
+          # data/history/ のスナップショットはワーキングツリーに残るので畳んでも消えない。
+          # 直前がコードのコミットのときは畳まずに新しいコミットを作る。
+          if git log -1 --pretty=%s | grep -q '^chore(data)'; then
+            git commit --amend -m "$MSG"
+            git push --force-with-lease
+          else
+            git commit -m "$MSG"
+            git push
+          fi

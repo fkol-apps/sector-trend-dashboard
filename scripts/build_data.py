@@ -347,6 +347,60 @@ def build_payload(
     }
 
 
+def write_history_snapshot(market: str, payload: dict, cfg: dict, log=print) -> Path | None:
+    """その日の選定結果だけを軽量なJSONで残す。
+
+    表示用のフルJSONは毎日上書きされるが、こちらは1日1ファイルで永久に積み上げる。
+    チャート系列は含めない（後から株価を取り直せば再現できるため）。1日あたり約28KB。
+    同じ日に再実行した場合は、その市場の分だけ差し替える。
+    """
+    hcfg = cfg.get("history", {})
+    if not hcfg.get("enabled", False):
+        return None
+
+    picks = []
+    for sector in payload["sectors"]:
+        for tf, tickers in sector["timeframes"].items():
+            for pos, ticker in enumerate(tickers, start=1):
+                stock = payload["stocks"][ticker]
+                sc = stock["scores"][tf]
+                picks.append({
+                    "sector": sector["key"],
+                    "tf": tf,
+                    "pos": pos,
+                    "ticker": ticker,
+                    "name": stock["name"],
+                    "price": stock["price"],
+                    "score": sc["score"],
+                    "rank": sc["rank"],
+                    "ret": sc["return"],
+                })
+
+    entry = {
+        "price_date": payload["price_date"],
+        "generated_at": payload["generated_at"],
+        "scored": payload["counts"]["scored"],
+        "failed": payload["counts"]["failed"],
+        "picks": picks,
+    }
+
+    day = datetime.now(JST).strftime("%Y-%m-%d")
+    path = ROOT / hcfg.get("dir", "data/history") / f"{day}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    if path.exists():
+        with path.open(encoding="utf-8") as f:
+            doc = json.load(f)
+    else:
+        doc = {"date": day, "markets": {}}
+    doc["markets"][market] = entry
+
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, separators=(",", ":"))
+    log(f"  -> {path.relative_to(ROOT)} に選定{len(picks)}件を記録 ({path.stat().st_size / 1024:,.0f} KB)")
+    return path
+
+
 # --------------------------------------------------------------------------
 # 検証用のコンソール出力
 # --------------------------------------------------------------------------
@@ -432,6 +486,9 @@ def run(market: str, args, cfg: dict, sector_map: dict) -> int:
     size_kb = out_path.stat().st_size / 1024
     log(f"  -> {out_path.relative_to(ROOT)} ({size_kb:,.0f} KB, "
         f"{len(payload['sectors'])}セクター / {len(payload['stocks'])}銘柄掲載)")
+
+    if not args.no_history:
+        write_history_snapshot(market, payload, cfg, log)
     return 0
 
 
@@ -443,6 +500,7 @@ def main() -> int:
     p.add_argument("--output", help="出力先の上書き（リポジトリルートからの相対パス）")
     p.add_argument("--dry-run", action="store_true", help="JSONを書かず、指標とスコアを表で出す")
     p.add_argument("--no-filter", action="store_true", help="事前フィルタを適用しない（動作確認用）")
+    p.add_argument("--no-history", action="store_true", help="履歴スナップショットを書かない")
     args = p.parse_args()
 
     cfg = load_config()
