@@ -509,6 +509,7 @@ body {
 .detail {
   width: min(880px, calc(100vw - 24px));
   max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -521,17 +522,23 @@ body {
 
 .detail-body {
   max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px 18px 20px;
 }
 
 .modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .modal-head h2 { margin: 0; font-size: 17px; }
@@ -692,6 +699,38 @@ body {
   .meta { text-align: left; white-space: normal; }
   .controls { justify-content: space-between; }
 
-  .detail { width: 100vw; max-height: 100vh; border-radius: 0; border: none; }
-  .detail-body { max-height: 100vh; }
+  /* モバイルのブラウザは 100vh がアドレスバーを含む高さになるため、
+     中央寄せのままだとダイアログ上端がアドレスバーの裏に隠れる。
+     動的ビューポート(dvh)を使い、上端に寄せて固定する。 */
+  .detail {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    margin: 0;
+    inset: 0;
+    border-radius: 0;
+    border: none;
+  }
+
+  .detail-body {
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    padding: 0 14px 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .modal-head {
+    /* 見出しはスクロールしても常に見えるように、安全領域の分だけ内側に置く */
+    padding-top: calc(12px + env(safe-area-inset-top));
+    margin: 0 -14px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .modal-head h2 { font-size: 16px; }
 }
