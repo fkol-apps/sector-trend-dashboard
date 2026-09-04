@@ -26,9 +26,13 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          # 既定の fetch-depth: 1（浅いクローン）だと HEAD に親が無く、
+          # commit --amend がルートコミットを作って force push で全履歴を消してしまう。
+          fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -60,11 +64,19 @@ jobs:
 
           # 表示用のフルJSON（約2MB/日）は履歴を残さず直前のデータコミットに畳む。
           # data/history/ のスナップショットはワーキングツリーに残るので畳んでも消えない。
-          # 直前がコードのコミットのときは畳まずに新しいコミットを作る。
-          if git log -1 --pretty=%s | grep -q '^chore(data)'; then
+          #
+          # 畳む（amend + force push）のは、次の3つをすべて満たすときだけ。
+          # ひとつでも欠けたら通常のコミットにフォールバックする。履歴を壊さないための保険。
+          #   1. 完全なクローンである（浅いクローンだと amend がルートコミットになる）
+          #   2. HEAD に親コミットがある
+          #   3. 直前のコミットがデータ更新のコミットである（コードの履歴は書き換えない）
+          SHALLOW=$(git rev-parse --is-shallow-repository)
+          if [ "$SHALLOW" = "false" ]              && git rev-parse -q --verify HEAD^ >/dev/null              && git log -1 --pretty=%s | grep -q '^chore(data)'; then
+            echo "直前のデータコミットに畳みます。"
             git commit --amend -m "$MSG"
             git push --force-with-lease
           else
+            echo "新しいコミットを作ります（shallow=$SHALLOW）。"
             git commit -m "$MSG"
             git push
           fi
