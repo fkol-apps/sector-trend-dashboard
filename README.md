@@ -1,4 +1,4 @@
-# セクター別トレンド銘柄ダッシュボード
+# Trends — セクター別トレンド銘柄ダッシュボード
 
 **https://fkol-apps.github.io/sector-trend-dashboard/**
 
@@ -236,6 +236,8 @@ python -m http.server 8940 --directory docs
 
 ## アプリアイコン / ホーム画面への追加
 
+アプリ名は **Trends** です。画面上部にもアイコンとともに表示し、
+従来のタイトル「セクター別トレンド銘柄」は副題として残しています。
 スマホのホーム画面に追加すると **「Trends」** という名前とアイコンで並びます
 （iOS: 共有 → ホーム画面に追加 ／ Android Chrome: メニュー → ホーム画面に追加）。
 `display: standalone` なのでアドレスバーのないアプリのように起動します。

@@ -84,19 +84,46 @@ body {
   flex-wrap: wrap;
 }
 
-.titles { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.titles {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+/* アプリ名の左に置く小さなアイコン。ホーム画面のアイコンと同じ絵柄。 */
+.brand-mark {
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  flex: none;
+}
 
 .site-header h1 {
   margin: 0;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.005em;
   white-space: nowrap;
+}
+
+/* 従来のタイトルは副題として残す */
+.tagline {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding-left: 9px;
+  border-left: 1px solid var(--border-strong);
 }
 
 .subtitle {
   margin: 0;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -112,6 +139,10 @@ body {
 
 .meta b { color: var(--text); font-weight: 600; }
 .meta-warn { color: rgb(var(--neg)); }
+
+@media (max-width: 1320px) {
+  .subtitle { display: none; }
+}
 
 /* ---------------------------------------------------------------- コントロール */
 .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -695,7 +726,8 @@ body {
   .tf-inline-label span { font-weight: 400; color: var(--text-faint); font-size: 10px; margin-left: 4px; }
 
   .header-inner { flex-direction: column; align-items: stretch; gap: 6px; }
-  .titles { flex-direction: column; gap: 0; }
+  .titles { align-items: center; gap: 8px; }
+  .titles .subtitle { flex-basis: 100%; }
   .meta { text-align: left; white-space: normal; }
   .controls { justify-content: space-between; }
 
