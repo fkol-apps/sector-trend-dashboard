@@ -24,6 +24,7 @@
 
   const el = {
     board: document.getElementById("board"),
+    boardHead: document.getElementById("board-head"),
     status: document.getElementById("status"),
     meta: document.getElementById("meta"),
     subtitle: document.getElementById("subtitle"),
@@ -110,45 +111,6 @@
       : `https://finance.yahoo.com/quote/${encodeURIComponent(ticker)}`;
   }
 
-  // ------------------------------------------------------------ スパークライン
-  function sparkline(values, positive) {
-    const svg = document.createElementNS(SVGNS, "svg");
-    svg.setAttribute("class", "spark");
-    svg.setAttribute("viewBox", "0 0 100 26");
-    svg.setAttribute("preserveAspectRatio", "none");
-    svg.setAttribute("aria-hidden", "true");
-
-    const pts = (values || []).filter((v) => typeof v === "number");
-    if (pts.length < 2) return svg;
-
-    const min = Math.min(...pts);
-    const max = Math.max(...pts);
-    const span = max - min || 1;
-    const x = (i) => (i / (pts.length - 1)) * 100;
-    const y = (v) => 24 - ((v - min) / span) * 22;
-    const color = `rgb(${positive ? "var(--pos)" : "var(--neg)"})`;
-
-    const line = document.createElementNS(SVGNS, "polyline");
-    line.setAttribute("points", pts.map((v, i) => `${x(i).toFixed(2)},${y(v).toFixed(2)}`).join(" "));
-    line.setAttribute("fill", "none");
-    line.setAttribute("stroke", color);
-    line.setAttribute("stroke-width", "1.4");
-    line.setAttribute("stroke-linejoin", "round");
-    line.setAttribute("stroke-linecap", "round");
-    line.setAttribute("vector-effect", "non-scaling-stroke");
-    svg.appendChild(line);
-
-    const dot = document.createElementNS(SVGNS, "circle");
-    dot.setAttribute("cx", "100");
-    dot.setAttribute("cy", y(pts[pts.length - 1]).toFixed(2));
-    dot.setAttribute("r", "1.6");
-    dot.setAttribute("fill", color);
-    dot.setAttribute("vector-effect", "non-scaling-stroke");
-    svg.appendChild(dot);
-
-    return svg;
-  }
-
   // ------------------------------------------------------------ タイル
   function buildTile(stock, timeframe, data) {
     const sc = stock.scores[timeframe] || {};
@@ -163,50 +125,33 @@
     tile.style.setProperty("--tint-a", tint.tintAlpha);
     tile.style.setProperty("--bar-a", tint.barAlpha);
 
-    const chgClass = stock.chg_pct > 0 ? "up" : stock.chg_pct < 0 ? "down" : "flat";
-    const chgText = stock.chg_pct == null ? "—" : formatSigned(stock.chg_pct, 2) + "%";
+    const parts = [
+      ["t-ticker", stock.ticker],
+      ["t-name", stock.name],
+      ["t-score", formatSigned(sc.score)],
+      ["t-price", formatPrice(stock.price, data.currency)],
+      [
+        "t-chg " + (stock.chg_pct > 0 ? "up" : stock.chg_pct < 0 ? "down" : "flat"),
+        stock.chg_pct == null ? "—" : formatSigned(stock.chg_pct, 2) + "%",
+      ],
+    ];
+    for (const [cls, text] of parts) {
+      const span = document.createElement("span");
+      span.className = cls;
+      span.textContent = text;
+      if (cls === "t-name") span.title = stock.name;
+      tile.appendChild(span);
+    }
 
-    const row1 = document.createElement("div");
-    row1.className = "tile-row1";
-    const tickerEl = document.createElement("span");
-    tickerEl.className = "ticker";
-    tickerEl.textContent = stock.ticker;
-    const chgEl = document.createElement("span");
-    chgEl.className = `chg ${chgClass}`;
-    chgEl.textContent = chgText;
-    row1.append(tickerEl, chgEl);
-
-    const name = document.createElement("div");
-    name.className = "name";
-    name.textContent = stock.name;
-    name.title = stock.name;
-
-    const row2 = document.createElement("div");
-    row2.className = "tile-row2";
-    const price = document.createElement("span");
-    price.className = "price";
-    price.textContent = formatPrice(stock.price, data.currency);
     const ret = document.createElement("span");
-    ret.className = "ret";
+    ret.className = "t-ret";
     const retLabel = document.createElement("span");
     retLabel.textContent = RETURN_LABEL[timeframe] + " ";
     const retValue = document.createElement("b");
     retValue.textContent = formatPct(sc.return);
     ret.append(retLabel, retValue);
-    row2.append(price, ret);
+    tile.appendChild(ret);
 
-    const spark = sparkline(stock.spark, (sc.return ?? 0) >= 0);
-
-    const row3 = document.createElement("div");
-    row3.className = "tile-row3";
-    const rank = document.createElement("span");
-    rank.textContent = sc.rank ? `市場全体 ${sc.rank}位 / ${data.counts.scored}` : "";
-    const score = document.createElement("span");
-    score.className = "score";
-    score.textContent = `スコア ${formatSigned(sc.score)}`;
-    row3.append(rank, score);
-
-    tile.append(row1, name, row2, spark, row3);
     tile.setAttribute(
       "aria-label",
       `${stock.name} ${stock.ticker} スコア${formatSigned(sc.score)} ` +
@@ -221,44 +166,64 @@
     return TIMEFRAME_ORDER.filter((tf) => state.timeframes.has(tf));
   }
 
+  function renderBoardHead(shown) {
+    el.boardHead.textContent = "";
+    el.boardHead.style.setProperty("--tf-count", String(shown.length));
+
+    const rail = document.createElement("div");
+    rail.className = "rail-head";
+    rail.textContent = "セクター";
+    el.boardHead.appendChild(rail);
+
+    for (const tf of shown) {
+      const cell = document.createElement("div");
+      const label = document.createElement("span");
+      label.className = "tf-label";
+      label.textContent = state.data.timeframe_labels?.[tf] ?? TIMEFRAME_LABEL[tf];
+      const note = document.createElement("span");
+      note.className = "tf-note";
+      note.textContent = TIMEFRAME_NOTE[tf];
+      cell.append(label, note);
+      el.boardHead.appendChild(cell);
+    }
+  }
+
   function render() {
     const data = state.data;
     const shown = activeTimeframes();
+    renderBoardHead(shown);
     el.board.textContent = "";
 
     for (const sector of data.sectors) {
-      const block = document.createElement("section");
-      block.className = "sector";
-      block.dataset.sector = sector.key;
+      const row = document.createElement("section");
+      row.className = "sector";
+      row.dataset.sector = sector.key;
+      row.style.setProperty("--tf-count", String(shown.length));
 
-      const head = document.createElement("div");
-      head.className = "sector-head";
+      const rail = document.createElement("div");
+      rail.className = "sector-rail";
       const nameEl = document.createElement("span");
       nameEl.className = "sector-name";
       nameEl.textContent = sector.ja;
       const countEl = document.createElement("span");
       countEl.className = "sector-count";
       countEl.textContent = `${sector.count}銘柄`;
-      head.append(nameEl, countEl);
-
-      const cols = document.createElement("div");
-      cols.className = "timeframes";
-      cols.style.setProperty("--tf-count", String(shown.length));
+      rail.append(nameEl, countEl);
+      row.appendChild(rail);
 
       for (const tf of shown) {
         const col = document.createElement("div");
         col.className = "tf-column";
         col.dataset.timeframe = tf;
 
-        const colHead = document.createElement("div");
-        colHead.className = "tf-head";
-        const label = document.createElement("span");
-        label.className = "tf-label";
-        label.textContent = data.timeframe_labels?.[tf] ?? TIMEFRAME_LABEL[tf];
-        const note = document.createElement("span");
-        note.className = "tf-note";
-        note.textContent = TIMEFRAME_NOTE[tf];
-        colHead.append(label, note);
+        // 1カラムに折り返す画面幅でだけ見える時間軸ラベル
+        const inline = document.createElement("div");
+        inline.className = "tf-inline-label";
+        inline.textContent = data.timeframe_labels?.[tf] ?? TIMEFRAME_LABEL[tf];
+        const inlineNote = document.createElement("span");
+        inlineNote.textContent = TIMEFRAME_NOTE[tf];
+        inline.appendChild(inlineNote);
+        col.appendChild(inline);
 
         const list = document.createElement("div");
         list.className = "tf-list";
@@ -283,12 +248,11 @@
           }
         }
 
-        col.append(colHead, list);
-        cols.appendChild(col);
+        col.appendChild(list);
+        row.appendChild(col);
       }
 
-      block.append(head, cols);
-      el.board.appendChild(block);
+      el.board.appendChild(row);
     }
   }
 
