@@ -19,9 +19,11 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.trend_core import (  # noqa: E402
     compute_metrics,
+    compute_per,
     normalize_weights,
     rsi_wilder,
     rsi_zone_score,
+    sanitize_per,
     score_timeframe,
     zscore,
 )
@@ -186,6 +188,63 @@ def test_too_short_returns_none(config):
     close = make_series([100.0])
     volume = make_series([1.0])
     assert compute_metrics(close, volume, config["windows"], config["scoring"]["rsi"]) is None
+
+
+# ---------------------------------------------------------------- PER
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (8.770532, 8.8),    # 通常の実績PER。小数第1位に丸める
+        (54.050835, 54.1),
+        (500.0, 500.0),     # 上限ちょうどは通す
+        (500.1, None),      # 上限超えは業績急変による異常値として捨てる
+        (-31.69, None),     # 赤字予想の負のPERは表示しない
+        (0.0, None),
+        (None, None),       # yfinanceは赤字企業でNoneを返す
+        (float("nan"), None),
+        (float("inf"), None),
+        ("8.8", 8.8),       # 数値化できる文字列は受け付ける
+        ("なし", None),
+    ],
+)
+def test_sanitize_per(value, expected):
+    assert sanitize_per(value) == expected
+
+
+def test_sanitize_per_respects_custom_cap():
+    assert sanitize_per(120.0, max_per=100) is None
+    assert sanitize_per(80.0, max_per=100) == 80.0
+
+
+def test_compute_per_uses_market_cap_over_reported_pe():
+    """株式分割の調整ずれで trailingPE が壊れていても、時価総額基準なら正しく出る。
+
+    実例: 日本製鉄。yfinance の trailingPE は 209 倍だったが、
+    時価総額 3.62兆円 ÷ 純利益 2,880億円 = 12.6 倍が実態。
+    """
+    per = compute_per(market_cap=3.62e12, net_income=288e9, fallback_pe=209.0)
+    assert per == pytest.approx(12.6, abs=0.05)
+
+
+def test_compute_per_falls_back_when_net_income_missing():
+    assert compute_per(market_cap=1e12, net_income=None, fallback_pe=18.4) == 18.4
+    assert compute_per(market_cap=None, net_income=None, fallback_pe=18.4) == 18.4
+
+
+def test_compute_per_returns_none_for_loss_making():
+    # 赤字はフォールバックも使わない（PERが定義できないため）
+    assert compute_per(market_cap=1e12, net_income=-5e10, fallback_pe=30.0) is None
+    assert compute_per(market_cap=1e12, net_income=0, fallback_pe=30.0) is None
+
+
+def test_compute_per_applies_cap():
+    assert compute_per(market_cap=1e12, net_income=1e9, fallback_pe=None) is None  # 1000倍
+    assert compute_per(market_cap=1e12, net_income=1e11, fallback_pe=None) == 10.0
+
+
+def test_compute_per_handles_garbage_input():
+    assert compute_per(market_cap="なし", net_income="なし", fallback_pe=12.0) == 12.0
+    assert compute_per(market_cap=float("nan"), net_income=1e9, fallback_pe=None) is None
 
 
 # ---------------------------------------------------------------- z-score

@@ -29,6 +29,7 @@ from scripts.trend_core import (  # noqa: E402
     TIMEFRAME_LABELS,
     TIMEFRAME_RETURN,
     compute_metrics,
+    compute_per,
     score_timeframe,
     sma,
 )
@@ -144,6 +145,53 @@ def download_prices(tickers: list[str], cfg: dict, log=print) -> tuple[dict[str,
     return prices, failed
 
 
+def fetch_fundamentals(tickers: list[str], cfg: dict, log=print) -> dict[str, dict]:
+    """掲載銘柄のPERを取る。
+
+    yfinance の info は1銘柄1リクエストなので、ユニバース全体ではなく
+    実際に画面に出る銘柄（各市場80前後）だけに絞って呼ぶ。
+    取れなかった銘柄は空のまま返し、全体は止めない。
+    """
+    fcfg = cfg.get("fundamentals", {})
+    if not fcfg.get("enabled", False) or not tickers:
+        return {}
+
+    import yfinance as yf
+
+    max_per = fcfg.get("max_per", 500)
+    out: dict[str, dict] = {}
+    failed: list[str] = []
+
+    log(f"  財務指標(PER)を取得: {len(tickers)} 銘柄")
+    for i, t in enumerate(tickers, 1):
+        info = None
+        for attempt in range(1, fcfg.get("max_retries", 2) + 1):
+            try:
+                info = yf.Ticker(t).info
+                break
+            except Exception:
+                time.sleep(fcfg.get("sleep", 0.35) * attempt * 2)
+        if not info:
+            failed.append(t)
+        else:
+            net_income = info.get("netIncomeToCommon")
+            out[t] = {
+                "per": compute_per(
+                    info.get("marketCap"), net_income, info.get("trailingPE"), max_per
+                ),
+                # PERが無い理由を画面で言い分けるために、赤字かどうかを持っておく
+                "loss": bool(net_income is not None and net_income < 0) or None,
+            }
+        if i % 25 == 0:
+            log(f"    {i}/{len(tickers)} 件")
+        time.sleep(fcfg.get("sleep", 0.35))
+
+    got_per = sum(1 for v in out.values() if v.get("per") is not None)
+    log(f"  PER取得: {got_per}/{len(tickers)} 銘柄"
+        + (f" / 取得失敗 {len(failed)} 銘柄: {failed}" if failed else ""))
+    return out
+
+
 # --------------------------------------------------------------------------
 # 集計
 # --------------------------------------------------------------------------
@@ -206,6 +254,11 @@ def pick_top(metrics: pd.DataFrame, universe: pd.DataFrame, scored: dict, cfg: d
     return picks
 
 
+def needed_tickers(picks: dict) -> list[str]:
+    """どこかのセクター×時間軸で上位に入った＝画面に出る銘柄。"""
+    return sorted({t for p in picks.values() for lst in p["timeframes"].values() for t in lst})
+
+
 # --------------------------------------------------------------------------
 # JSON 組み立て
 # --------------------------------------------------------------------------
@@ -226,7 +279,7 @@ def _series_list(s: pd.Series, nd=2) -> list:
 
 def build_stock_entry(
     ticker: str, universe_row: dict, metrics_row: pd.Series, prices: pd.DataFrame,
-    scored: dict, ranks: dict, cfg: dict,
+    scored: dict, ranks: dict, cfg: dict, fundamentals: dict | None = None,
 ) -> dict:
     out_cfg = cfg["output"]
     w = cfg["windows"]
@@ -262,6 +315,8 @@ def build_stock_entry(
             "breakdown": breakdown,
         }
 
+    fund = (fundamentals or {}).get(ticker, {})
+
     return {
         "ticker": ticker,
         "name": universe_row["name"],
@@ -269,6 +324,10 @@ def build_stock_entry(
         "price": _r(metrics_row["price"]),
         "chg_pct": _r(metrics_row["chg_pct"]),
         "last_date": metrics_row["last_date"],
+        "fundamentals": {
+            "per": fund.get("per"),
+            "loss": fund.get("loss"),
+        },
         "metrics": {
             "rsi14": _r(metrics_row.get("rsi14"), 1),
             "volume_ratio": _r(metrics_row.get("volume_ratio"), 2),
@@ -289,7 +348,7 @@ def build_stock_entry(
 def build_payload(
     market: str, cfg: dict, sector_map: dict, universe: pd.DataFrame,
     metrics: pd.DataFrame, prices: dict, scored: dict, picks: dict,
-    failed: list[str], universe_size: int,
+    failed: list[str], universe_size: int, fundamentals: dict | None = None,
 ) -> dict:
     ranks = {}
     for tf, res in scored.items():
@@ -302,9 +361,9 @@ def build_payload(
     uni = universe.set_index("ticker").to_dict(orient="index")
     sector_meta = {s["key"]: s for s in sector_map["gics_sectors"]}
 
-    needed = sorted({t for p in picks.values() for lst in p["timeframes"].values() for t in lst})
+    needed = needed_tickers(picks)
     stocks = {
-        t: build_stock_entry(t, uni[t], metrics.loc[t], prices[t], scored, ranks, cfg)
+        t: build_stock_entry(t, uni[t], metrics.loc[t], prices[t], scored, ranks, cfg, fundamentals)
         for t in needed
     }
 
@@ -374,6 +433,7 @@ def write_history_snapshot(market: str, payload: dict, cfg: dict, log=print) -> 
                     "score": sc["score"],
                     "rank": sc["rank"],
                     "ret": sc["return"],
+                    "per": stock.get("fundamentals", {}).get("per"),
                 })
 
     entry = {
@@ -476,8 +536,13 @@ def run(market: str, args, cfg: dict, sector_map: dict) -> int:
         return 0
 
     picks = pick_top(metrics, universe, scored, cfg)
+
+    fundamentals = {}
+    if not args.no_fundamentals:
+        fundamentals = fetch_fundamentals(needed_tickers(picks), cfg, log)
+
     payload = build_payload(market, cfg, sector_map, universe, metrics, prices,
-                            scored, picks, failed, len(universe))
+                            scored, picks, failed, len(universe), fundamentals)
 
     out_path = ROOT / (args.output or market_cfg["output"])
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -501,6 +566,7 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true", help="JSONを書かず、指標とスコアを表で出す")
     p.add_argument("--no-filter", action="store_true", help="事前フィルタを適用しない（動作確認用）")
     p.add_argument("--no-history", action="store_true", help="履歴スナップショットを書かない")
+    p.add_argument("--no-fundamentals", action="store_true", help="PERの取得を省く（動作確認用）")
     args = p.parse_args()
 
     cfg = load_config()

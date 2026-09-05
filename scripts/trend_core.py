@@ -162,6 +162,48 @@ def compute_metrics(close: pd.Series, volume: pd.Series, windows: dict, rsi_cfg:
     }
 
 
+def compute_per(market_cap, net_income, fallback_pe=None, max_per: float = 500.0) -> float | None:
+    """実績PERを「時価総額 ÷ 純利益」で求める。
+
+    yfinance が返す trailingPE は 株価 ÷ 1株利益 だが、日本株では株式分割の調整が
+    株価とEPSで食い違うことがあり、実態とかけ離れた値になる
+    （例: 日本製鉄が209倍。実際は12倍前後）。
+    時価総額と純利益はどちらも1株あたりではない絶対額なので、分割の影響を受けない。
+
+    純利益が取れないときだけ trailingPE にフォールバックする。
+    赤字（純利益が0以下）のときは None を返す。
+    """
+    try:
+        mc = float(market_cap) if market_cap is not None else None
+        ni = float(net_income) if net_income is not None else None
+    except (TypeError, ValueError):
+        mc = ni = None
+
+    if mc is not None and ni is not None and np.isfinite(mc) and np.isfinite(ni):
+        if ni <= 0:
+            return None          # 赤字。PERは定義できない
+        return sanitize_per(mc / ni, max_per)
+    return sanitize_per(fallback_pe, max_per)
+
+
+def sanitize_per(value, max_per: float = 500.0) -> float | None:
+    """PERとして表示してよい値だけを通す。
+
+    yfinance は赤字企業で None を返したり、予想PERに負の値を返したりする。
+    また業績が極端に落ち込んだ銘柄では数千倍のPERが出てきて、表示しても意味がない。
+    0以下・非数・上限超えは「値なし」として扱う。
+    """
+    if value is None:
+        return None
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(v) or v <= 0 or v > max_per:
+        return None
+    return round(v, 1)
+
+
 # --------------------------------------------------------------------------
 # スコア合成
 # --------------------------------------------------------------------------

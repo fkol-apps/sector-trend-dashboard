@@ -121,6 +121,13 @@
     };
   }
 
+  /** PERの表示。値が無い理由が「赤字」なら、そう書いたほうが情報になる。 */
+  function formatPer(fund) {
+    if (fund?.per != null) return nf(1).format(fund.per) + "倍";
+    if (fund?.loss) return "赤字";
+    return "—";
+  }
+
   function yahooUrl(ticker, market) {
     return market === "jp"
       ? `https://finance.yahoo.co.jp/quote/${encodeURIComponent(ticker)}`
@@ -652,9 +659,11 @@
     const summary = document.createElement("div");
     summary.className = "modal-summary";
     const chg = stock.chg_pct;
+    const fund = stock.fundamentals || {};
     const items = [
       ["現在値", formatPrice(stock.price, data.currency)],
       ["前日比", chg == null ? "—" : formatSigned(chg, 2) + "%"],
+      ["PER", formatPer(fund)],
       ["RSI(14)", stock.metrics.rsi14 == null ? "—" : nf(1).format(stock.metrics.rsi14)],
       ["出来高比", stock.metrics.volume_ratio == null ? "—" : "×" + nf(2).format(stock.metrics.volume_ratio)],
       ["12ヶ月", formatPct(stock.metrics.ret_12m)],
@@ -690,7 +699,8 @@
     note.className = "modal-note";
     note.textContent =
       "z はユニバース全体を平均0・標準偏差1に揃えた値（±3で頭打ち）、寄与は z × 重み。" +
-      "スコアはこの市場のユニバース内での相対評価です。";
+      "スコアはこの市場のユニバース内での相対評価です。" +
+      "PER は時価総額 ÷ 純利益（直近12ヶ月）で、参考値です。銘柄の選定には使っていません。";
 
     const footer = document.createElement("footer");
     footer.className = "modal-foot";
