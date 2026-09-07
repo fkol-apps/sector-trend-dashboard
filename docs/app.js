@@ -22,7 +22,14 @@
     view: "map",
     timeframes: new Set(TIMEFRAME_ORDER),
     data: null,
+    fetchedAt: 0,      // 最後にサーバーへ取りに行った時刻
   };
+
+  // 開いたままでも新しいデータに追いつくための再取得のしきい値
+  const REFRESH_MIN_INTERVAL_MS = 3 * 60 * 1000;   // これ以内の再取得はしない
+  const REFRESH_POLL_MS = 10 * 60 * 1000;          // 表示中に確認する間隔
+  const CLOCK_TICK_MS = 60 * 1000;                 // 「〜前」の表示を更新する間隔
+  const STALE_AFTER_MS = 30 * 60 * 60 * 1000;      // これより古いデータは警告色にする（30時間）
 
   const cache = new Map();
 
@@ -77,6 +84,19 @@
     if (Number.isNaN(d.getTime())) return iso;
     const p = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  /** 「3分前」「2時間前」のように、いつのデータかを一目で分かる形にする。 */
+  function formatAge(iso) {
+    if (!iso) return "";
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return "";
+    const min = Math.floor((Date.now() - t) / 60000);
+    if (min < 1) return "たった今";
+    if (min < 60) return `${min}分前`;
+    const hours = Math.floor(min / 60);
+    if (hours < 24) return `${hours}時間前`;
+    return `${Math.floor(hours / 24)}日前`;
   }
 
   /** 指標の生値を、指標の性質に合わせて読める形にする。 */
@@ -424,8 +444,35 @@
       line1.appendChild(failed);
     }
     const line2 = document.createElement("div");
-    line2.append(document.createTextNode("最終更新: "), bold(formatDateTime(data.generated_at)));
+    line2.className = "meta-updated";
+    const age = document.createElement("span");
+    age.className = "meta-age";
+    line2.append(document.createTextNode("最終更新: "), bold(formatDateTime(data.generated_at)), age);
+
+    const reload = document.createElement("button");
+    reload.type = "button";
+    reload.className = "meta-reload";
+    reload.title = "最新のデータを取り直す";
+    reload.setAttribute("aria-label", "最新のデータを取り直す");
+    reload.textContent = "⟳";
+    reload.addEventListener("click", () => refresh({ force: true }));
+    line2.appendChild(reload);
+
     el.meta.append(line1, line2);
+    updateAge();
+  }
+
+  /** 「〜前」の部分だけを書き換える（再取得はしない）。 */
+  function updateAge() {
+    const el2 = el.meta.querySelector(".meta-age");
+    if (!el2 || !state.data) return;
+    const generated = state.data.generated_at;
+    el2.textContent = `（${formatAge(generated)}）`;
+    const stale = Date.now() - new Date(generated).getTime() > STALE_AFTER_MS;
+    el2.classList.toggle("is-stale", stale);
+    el2.title = stale
+      ? "定期更新（平日 朝7時）がまだ走っていない可能性があります"
+      : "";
   }
 
   function bold(text) {
@@ -859,20 +906,37 @@
     return out;
   }
 
-  async function loadMarket(market) {
-    if (cache.has(market)) return cache.get(market);
+  async function loadMarket(market, force = false) {
+    if (!force && cache.has(market)) return cache.get(market);
+    // no-cache は「毎回サーバーに確認する」。中身が変わっていなければ304で軽く済む。
     const res = await fetch(`data/${market}.json`, { cache: "no-cache" });
     if (!res.ok) throw new Error(`data/${market}.json の取得に失敗しました (HTTP ${res.status})`);
     const data = await res.json();
     cache.set(market, data);
+    state.fetchedAt = Date.now();
     return data;
   }
 
-  async function show() {
+  /** データを取り直す。開いたままのアプリを最新に追いつかせるための入口。 */
+  async function refresh({ force = false } = {}) {
+    if (document.visibilityState !== "visible") return;
+    if (el.dialog.open) return;                      // 詳細を見ている最中は邪魔しない
+    if (!force && Date.now() - state.fetchedAt < REFRESH_MIN_INTERVAL_MS) return;
+
+    const before = state.data?.generated_at;
+    cache.clear();
+    await show(true);
+    if (state.data && state.data.generated_at !== before) {
+      el.meta.classList.add("is-refreshed");
+      setTimeout(() => el.meta.classList.remove("is-refreshed"), 1500);
+    }
+  }
+
+  async function show(force = false) {
     try {
       el.status.hidden = true;
       el.board.setAttribute("aria-busy", "true");
-      state.data = await loadMarket(state.market);
+      state.data = await loadMarket(state.market, force);
       renderMeta();
       render();
     } catch (err) {
@@ -911,6 +975,14 @@
       el.dialog.close();
     }
   });
+
+  // 閉じて開き直さなくても最新に追いつくようにする。
+  // スマホはアプリを裏に回して戻ってきたときが実質の「起動」なので、可視状態の復帰を拾う。
+  document.addEventListener("visibilitychange", () => refresh());
+  window.addEventListener("pageshow", (e) => { if (e.persisted) refresh(); });
+  window.addEventListener("online", () => refresh({ force: true }));
+  setInterval(() => refresh(), REFRESH_POLL_MS);
+  setInterval(updateAge, CLOCK_TICK_MS);
 
   readUrl();
   buildControls();

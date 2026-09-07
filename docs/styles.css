@@ -140,6 +140,32 @@ body {
 .meta b { color: var(--text); font-weight: 600; }
 .meta-warn { color: rgb(var(--neg)); }
 
+.meta-updated { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.meta-age { color: var(--text-faint); }
+.meta-age.is-stale { color: rgb(var(--neg)); font-weight: 600; }
+
+/* データを取り直したときに一瞬だけ光らせて、更新されたことを分かるようにする */
+.meta.is-refreshed { animation: meta-flash 1.4s ease-out; }
+@keyframes meta-flash {
+  0%   { background: rgba(var(--pos), 0.22); }
+  100% { background: transparent; }
+}
+
+.meta-reload {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.meta-reload:hover { border-color: var(--border-strong); color: var(--text); }
+.meta-reload:focus-visible { outline: 2px solid rgb(var(--pos)); outline-offset: 2px; }
+
 @media (max-width: 1320px) {
   .subtitle { display: none; }
 }
@@ -729,6 +755,7 @@ body {
   .titles { align-items: center; gap: 8px; }
   .titles .subtitle { flex-basis: 100%; }
   .meta { text-align: left; white-space: normal; }
+  .meta-updated { justify-content: flex-start; }
   .controls { justify-content: space-between; }
 
   /* モバイルのブラウザは 100vh がアドレスバーを含む高さになるため、
