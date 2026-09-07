@@ -77,9 +77,18 @@ jobs:
           if [ "$SHALLOW" = "false" ]              && git rev-parse -q --verify HEAD^ >/dev/null              && git log -1 --pretty=%s | grep -q '^chore(data)'; then
             echo "直前のデータコミットに畳みます。"
             git commit --amend -m "$MSG"
-            git push --force-with-lease
+            PUSHED=$(git push --force-with-lease && echo yes || echo no)
           else
             echo "新しいコミットを作ります（shallow=$SHALLOW）。"
             git commit -m "$MSG"
+            PUSHED=$(git push && echo yes || echo no)
+          fi
+
+          # 実行中に誰かが push すると --force-with-lease が拒否する（履歴を守るための正しい挙動）。
+          # その場合はリモートを取り込み、自分のデータコミットを上に載せ直して通常の push でやり直す。
+          if [ "$PUSHED" != "yes" ]; then
+            echo "push が拒否されました。リモートの変更を取り込んでやり直します。"
+            git fetch origin "$GITHUB_REF_NAME"
+            git rebase "origin/$GITHUB_REF_NAME"
             git push
           fi
